@@ -1,0 +1,19 @@
+# Dependencies and tool state
+node_modules/
+.wrangler/
+
+# Local secrets
+.dev.vars
+.env
+.env.*
+!.env.example
+!.dev.vars.example
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
