@@ -16,6 +16,7 @@
  * and injects the key server-side — solves both problems at once.
  *
  * WHAT IT PROXIES
+ *   /health                                         -> worker status and route inventory
  *   /osdr-search?term=radiation&type=cgene&size=6   -> osdr.nasa.gov/osdr/data/search
  *   /radlab?spacecraft=ISS&instrument=REM&...       -> visualization.osdr.nasa.gov/radlab/api/
  *   /apod                                           -> api.nasa.gov/planetary/apod  (key injected)
@@ -83,7 +84,26 @@ export default {
     // DEMO_KEY if you haven't set one yet, so the worker still works out of the box.
     const apiKey = (env && env.NASA_API_KEY) ? env.NASA_API_KEY : 'DEMO_KEY';
 
-    if (url.pathname === '/osdr-search') {
+    if (url.pathname === '/health') {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          service: 'nasa-data-proxy',
+          version: '1.1.0',
+          timestamp: new Date().toISOString(),
+          routes: ['/health', '/apod', '/donki-flr', '/osdr-search', '/radlab'],
+        }),
+        {
+          status: 200,
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          },
+        }
+      );
+
+    } else if (url.pathname === '/osdr-search') {
       const upstream = new URL('https://osdr.nasa.gov/osdr/data/search');
       upstream.search = url.search; // forward term, type, size, from, etc. as-is
       return proxyJson(upstream.toString());
