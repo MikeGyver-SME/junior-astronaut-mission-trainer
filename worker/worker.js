@@ -109,6 +109,24 @@ export default {
       return proxyJson(upstream.toString());
 
     } else if (url.pathname === '/radlab') {
+      if (!url.search) {
+        return new Response(
+          JSON.stringify({
+            error: 'RadLab requires query parameters specifying filters and data columns.',
+            usage: '/radlab?spacecraft=ISS&instrument=REM&timestamp&absorbed_dose_rate&format=json',
+            example: `${url.origin}/radlab?spacecraft=ISS&instrument=REM&timestamp%3E=2019-12-05&timestamp%3C2019-12-06&absorbed_dose_rate&instrument_family&module&format=json`,
+          }),
+          {
+            status: 400,
+            headers: {
+              ...CORS_HEADERS,
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+            },
+          }
+        );
+      }
+
       const upstream = new URL('https://visualization.osdr.nasa.gov/radlab/api/');
       upstream.search = url.search; // forward spacecraft, instrument, timestamp filters, etc.
       return proxyJson(upstream.toString());
