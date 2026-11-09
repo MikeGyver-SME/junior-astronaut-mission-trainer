@@ -19,8 +19,8 @@
  *   /health                                         -> worker status and route inventory
  *   /osdr-search?term=radiation&type=cgene&size=6   -> osdr.nasa.gov/osdr/data/search
  *   /radlab?spacecraft=ISS&instrument=REM&...       -> visualization.osdr.nasa.gov/radlab/api/
- *   /apod                                           -> api.nasa.gov/planetary/apod  (key injected)
- *   /donki-flr?startDate=...&endDate=...            -> api.nasa.gov/DONKI/FLR       (key injected)
+ *   /apod                                           -> science.nasa.gov WordPress APOD (normalized)
+ *   /donki-flr?startDate=...&endDate=...            -> ccmc.gsfc.nasa.gov/DONKI-API/get/FLR
  * Only these NASA hosts are reachable through this worker — it is not an open
  * proxy, so it's safe to deploy publicly. The client never sends or sees your key.
  *
@@ -51,24 +51,64 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-async function proxyJson(targetUrl) {
-  try {
-    const upstreamResponse = await fetch(targetUrl, { headers: { 'Accept': 'application/json' } });
-    const body = await upstreamResponse.text();
-    return new Response(body, {
-      status: upstreamResponse.status,
-      headers: {
-        ...CORS_HEADERS,
-        'Content-Type': upstreamResponse.headers.get('Content-Type') || 'application/json',
-        'Cache-Control': 'public, max-age=300', // cache 5 min to be gentle on NASA's servers
-      },
-    });
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: 'Upstream NASA request failed', detail: String(err) }),
-      { status: 502, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
-    );
+const JSON_HEADERS = { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' };
+
+async function getUpstreamJson(targetUrl, timeoutMs = 12000) {
+  const response = await fetch(targetUrl, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`NASA upstream HTTP ${response.status}: ${body.slice(0, 250)}`);
   }
+  try { return JSON.parse(body); }
+  catch { throw new Error('NASA upstream returned non-JSON content'); }
+}
+
+function okJson(data) {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { ...JSON_HEADERS, 'Cache-Control': 'public, max-age=300' },
+  });
+}
+
+function errorJson(err) {
+  const message = String(err && err.message || err);
+  const timeout = /timeout|aborted/i.test(message);
+  return new Response(JSON.stringify({ error: 'Upstream NASA request failed', detail: message }), {
+    status: timeout ? 504 : 502,
+    headers: { ...JSON_HEADERS, 'Cache-Control': 'no-store' },
+  });
+}
+
+async function proxyJson(targetUrl) {
+  try { return okJson(await getUpstreamJson(targetUrl)); }
+  catch (err) { return errorJson(err); }
+}
+
+async function getApod() {
+  try {
+    const upstream = await getUpstreamJson('https://science.nasa.gov/wp-json/wp/v2/apod-basic?per_page=1');
+    const item = Array.isArray(upstream) ? upstream[0] : upstream;
+    if (!item || !item.title || !item.date) throw new Error('APOD returned no usable record');
+    const imageUrl = item.hdurl || null;
+    if (!imageUrl || /nasa-logo@2x|placeholder/i.test(imageUrl)) {
+      throw new Error('APOD returned no valid featured image');
+    }
+    // Maintain a single-object response for the existing frontend.
+    // APOD 'url' now refers to an article; retain it separately.
+    return okJson({
+      date: item.date,
+      title: item.title,
+      explanation: item.explanation || '',
+      media_type: item.media_type || 'image',
+      url: imageUrl,
+      hdurl: imageUrl,
+      article_url: item.url || item.permalink || 'https://science.nasa.gov/apod/',
+      credit: item.credit || '',
+    });
+  } catch (err) { return errorJson(err); }
 }
 
 export default {
@@ -89,7 +129,7 @@ export default {
         JSON.stringify({
           ok: true,
           service: 'nasa-data-proxy',
-          version: '1.1.0',
+          version: '1.1.1',
           timestamp: new Date().toISOString(),
           routes: ['/health', '/apod', '/donki-flr', '/osdr-search', '/radlab'],
         }),
@@ -132,14 +172,14 @@ export default {
       return proxyJson(upstream.toString());
 
     } else if (url.pathname === '/apod') {
-      const upstream = new URL('https://api.nasa.gov/planetary/apod');
-      upstream.searchParams.set('api_key', apiKey);
-      return proxyJson(upstream.toString());
+      return getApod();
 
     } else if (url.pathname === '/donki-flr') {
-      const upstream = new URL('https://api.nasa.gov/DONKI/FLR');
-      upstream.search = url.search; // forward startDate, endDate
-      upstream.searchParams.set('api_key', apiKey);
+      const upstream = new URL('https://ccmc.gsfc.nasa.gov/DONKI-API/get/FLR');
+      for (const param of ['startDate', 'endDate']) {
+        const val = url.searchParams.get(param);
+        if (val) upstream.searchParams.set(param, val);
+      }
       return proxyJson(upstream.toString());
 
     } else {

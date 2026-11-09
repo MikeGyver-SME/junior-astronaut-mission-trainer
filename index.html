@@ -197,8 +197,8 @@ async function loadNasaData(){
     : `https://api.nasa.gov/DONKI/FLR?startDate=${fmt(weekAgo)}&endDate=${fmt(today)}&api_key=${DIRECT_FALLBACK_KEY}`;
 
   const results = await Promise.allSettled([
-    fetch(apodUrl).then(r => r.json()),
-    fetch(donkiUrl).then(r => r.json()),
+    fetch(apodUrl).then(r => { if(!r.ok) throw new Error(`APOD HTTP ${r.status}`); return r.json(); }),
+    fetch(donkiUrl).then(r => { if(!r.ok) throw new Error(`DONKI HTTP ${r.status}`); return r.json(); }),
   ]);
 
   state.nasaData.apod = results[0].status === 'fulfilled' ? results[0].value : null;
@@ -233,7 +233,7 @@ function renderNasaData(){
       <div class="data-card"><div class="skeleton"></div></div>
       <div class="data-card"><div class="skeleton" style="height:60px;"></div></div>
       <div class="data-card"><div class="skeleton" style="height:60px;"></div></div>
-      <p class="data-error">Pulling live data from api.nasa.gov...</p>
+      <p class="data-error">Retrieving NASA astronomy and space-weather data...</p>
     `;
   } else {
     // APOD card
@@ -245,10 +245,10 @@ function renderNasaData(){
           <h3>${escapeHtml(d.apod.title || 'Today in Space')}</h3>
           ${isImg ? `<img src="${d.apod.url}" alt="${escapeHtml(d.apod.title || '')}"/>` : ''}
           <p>${escapeHtml(truncate(d.apod.explanation || '', 220))}</p>
-          <div class="dc-source">Source: NASA APOD · <a href="${d.apod.hdurl || d.apod.url}" target="_blank" rel="noopener">View original</a></div>
+          <div class="dc-source">Source: NASA APOD · <a href="${d.apod.article_url || 'https://science.nasa.gov/apod/'}" target="_blank" rel="noopener">View NASA article</a></div>
         </div>`;
     } else {
-      body += `<div class="data-card"><span class="dc-tag">Astronomy Picture of the Day</span><p class="data-error">Couldn't load today's image right now — NASA's demo API may be rate-limited. Try again shortly.</p></div>`;
+      body += `<div class="data-card"><span class="dc-tag">Astronomy Picture of the Day</span><p class="data-error">NASA's astronomy image is currently unavailable. Please try again later or visit science.nasa.gov/apod/.</p></div>`;
     }
 
     // Mars rover card
@@ -267,13 +267,13 @@ function renderNasaData(){
     }
 
     // DONKI space weather card
-    const risk = flareRiskInfo(d.flares);
+    const flareInfo = flareRiskInfo(d.flares);
     body += `
       <div class="data-card">
-        <span class="dc-tag">Real Radiation Risk This Week</span>
+        <span class="dc-tag">Observed Solar Flare Activity — Last 7 Days</span>
         <h3>Space Weather — Solar Flare Activity</h3>
-        ${risk ? `<span class="risk-pill ${risk.level}">${risk.level === 'low' ? '🟢' : risk.level === 'mod' ? '🟡' : '🔴'} ${risk.label}</span>` : ''}
-        <p>${risk ? 'This is the actual solar flare count NASA tracked over the past 7 days — the same kind of data flight controllers use to decide when to reinforce shielding, just like in your mission.' : "Couldn't load current solar flare data right now."}</p>
+        ${flareInfo ? `<span class="risk-pill low">${d.flares.length} recorded solar flare${d.flares.length === 1 ? '' : 's'} in the past 7 days</span>` : ''}
+        <p>${flareInfo ? 'These are actual NASA DONKI flare event records. Flare counts are not a direct measure of astronaut radiation dose or mission risk.' : "Couldn't load current solar flare data right now."}</p>
         <div class="dc-source">Source: NASA DONKI (Space Weather Database)</div>
       </div>`;
 
