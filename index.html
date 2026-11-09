@@ -244,7 +244,7 @@ function renderNasaData(){
           <span class="dc-tag">Astronomy Picture of the Day</span>
           <h3>${escapeHtml(d.apod.title || 'Today in Space')}</h3>
           ${isImg ? `<img src="${d.apod.url}" alt="${escapeHtml(d.apod.title || '')}"/>` : ''}
-          <p>${escapeHtml(truncate(d.apod.explanation || '', 220))}</p>
+          <p>${escapeHtml(truncate(apodPlainText(d.apod.explanation), 220))}</p>
           <div class="dc-source">Source: NASA APOD · <a href="${d.apod.article_url || 'https://science.nasa.gov/apod/'}" target="_blank" rel="noopener">View NASA article</a></div>
         </div>`;
     } else {
@@ -273,7 +273,7 @@ function renderNasaData(){
         <span class="dc-tag">Observed Solar Flare Activity — Last 7 Days</span>
         <h3>Space Weather — Solar Flare Activity</h3>
         ${flareInfo ? `<span class="risk-pill low">${d.flares.length} recorded solar flare${d.flares.length === 1 ? '' : 's'} in the past 7 days</span>` : ''}
-        <p>${flareInfo ? 'These are actual NASA DONKI flare event records. Flare counts are not a direct measure of astronaut radiation dose or mission risk.' : "Couldn't load current solar flare data right now."}</p>
+        <p>${flareInfo ? 'NASA DONKI reports observed solar flare events. Flare counts alone do not measure astronaut radiation exposure or determine mission risk; energetic particles, spacecraft shielding, location, and timing also matter.' : "Couldn't load current solar flare data right now."}</p>
         <div class="dc-source">Source: NASA DONKI (Space Weather Database)</div>
       </div>`;
 
@@ -282,9 +282,9 @@ function renderNasaData(){
       const avgDose = d.radlab.reduce((sum, r) => sum + r.absorbed_dose_rate, 0) / d.radlab.length;
       body += `
         <div class="data-card">
-          <span class="dc-tag">Real Astronaut Health Data</span>
-          <h3>ISS Radiation Dosimetry — RadLab</h3>
-          <p>Actual absorbed radiation dose readings recorded by REM instruments aboard the ISS, averaging <b style="color:var(--star);">${avgDose.toFixed(1)} µGy/hour</b> across ${d.radlab.length} readings from this sample. This is the same type of measurement NASA uses to track real astronaut radiation exposure over a mission — exactly what your Shielding meter represents in-game.</p>
+          <span class="dc-tag">Historical ISS Radiation Data</span>
+          <h3>ISS Radiation Dosimetry — RadLab (December 2019)</h3>
+          <p>Archived REM/Timepix absorbed dose-rate measurements from December 5, 10, and 14, 2019, at ISS locations including JPM and Cupola. The embedded sample averages <b style="color:var(--star);">${avgDose.toFixed(1)} µGy/hour</b> across ${d.radlab.length} readings. These are historical measurements, not live radiation readings or a direct estimate of a crew member's personal dose.</p>
           <div class="dc-source">Source: NASA OSDR RadLab — real dataset, embedded here since RadLab's API doesn't support in-browser requests. <a href="https://visualization.osdr.nasa.gov/radlab/gui/data-api/" target="_blank" rel="noopener">See the live API</a></div>
         </div>`;
     } else {
@@ -309,6 +309,11 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 function truncate(str, n){ return str.length > n ? str.slice(0,n).trim() + '…' : str; }
+function apodPlainText(html){
+  const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  doc.querySelectorAll('script,style,template').forEach(el => el.remove());
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+}
 
 /* ================= RESEARCH MODE (OSDR Study Search) ================= */
 const SUGGESTED_KEYWORDS = ['Radiation', 'Bone density', 'Muscle', 'Sleep', 'Immune system', 'Microgravity', 'Plants', 'Mars'];
